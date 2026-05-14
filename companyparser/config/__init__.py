@@ -1,0 +1,43 @@
+"""Configuration package."""
+from . import settings
+from .settings import (
+    ANTHROPIC_API_KEY,
+    ANTHROPIC_MODEL,
+    CACHE_DIR,
+    CATEGORIES,
+    CITIES,
+    CRAWL_DELAY_SECONDS,
+    DATA_DIR,
+    FRESHNESS_DAYS,
+    PRICE_TIER_THRESHOLDS,
+    PROCESSED_DIR,
+    RAW_DIR,
+    REQUEST_DELAY,
+    REQUEST_TIMEOUT,
+    SUB_CATEGORIES,
+    TIERS,
+    USER_AGENT,
+    VOLUME_TARGETS,
+)
+
+__all__ = [
+    "settings",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_MODEL",
+    "CACHE_DIR",
+    "CATEGORIES",
+    "CITIES",
+    "CRAWL_DELAY_SECONDS",
+    "DATA_DIR",
+    "FRESHNESS_DAYS",
+    "PRICE_TIER_THRESHOLDS",
+    "PROCESSED_DIR",
+    "RAW_DIR",
+    "REQUEST_DELAY",
+    "REQUEST_TIMEOUT",
+    "SUB_CATEGORIES",
+    "TIERS",
+    "USER_AGENT",
+    "VOLUME_TARGETS",
+]
+
