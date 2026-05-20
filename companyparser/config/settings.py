@@ -38,35 +38,25 @@ SUB_CATEGORIES: dict[str, list[str]] = {
         "ultra_luxury_icons",
         "ryokan",
         "design_boutique",
-        "view_driven",
         "private_exclusive",
-        "location_strategy",
     ],
     "dining": [
         "kaiseki",
         "sushi",
         "omakase",
-        "michelin_vs_local",
-        "counter_vs_private_room",
-        "cultural_depth",
-        "reservation_difficulty",
     ],
     "cultural": [
-        "temple_shrine_access",
+        "temples_shrines",
         "geisha_maiko",
         "sumo",
-        "tea_ceremony",
-        "kimono_styling",
-        "traditional_crafts",
-        "connection_only",
+        "traditional_crafts_workshops",
+        "access_you_cant_google",
     ],
     "nightlife": [
         "luxury_hotel_bars",
-        "speakeasy_hidden",
-        "cocktail_craft",
+        "cocktail_bars",
         "local_chaos",
         "late_night_fine_dining",
-        "access_entry_rules",
     ],
 }
 
@@ -92,12 +82,12 @@ VOLUME_TARGETS = {
 TIERS = ["public", "insider"]
 
 # --- MongoDB ---------------------------------------------------------------
-MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
-MONGO_DB = os.environ.get("MONGO_DB", "websites")
-MONGO_RECORDS_DB = os.environ.get("MONGO_RECORDS_DB", "Records")
+MONGO_URI = os.environ.get("MONGO_URI", "")
+MONGO_DB = os.environ.get("MONGO_DB", "websites_v2")
+MONGO_RECORDS_DB = os.environ.get("MONGO_RECORDS_DB", "Records_v2")
 
 # --- Anthropic (LLM extraction) -------------------------------------------
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "")
 
 

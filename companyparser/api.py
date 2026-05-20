@@ -6,10 +6,11 @@ Run with::
 
 Then open http://localhost:8000/docs for Swagger UI.
 
-Three main flows:
+Four main flows:
   1. POST /crawl/discover  — register parent URL, fetch it, LLM extracts venue URLs → lastFoundURLs
   2. POST /crawl/batch     — take parent URL, read lastFoundURLs, crawl each, LLM extract records → Records DB
   3. POST /crawl/single    — stateless single-URL extraction: fetch → LLM extract → save record (no tracking)
+  4. POST /crawl/from-db   — read raw HTML from MongoDB, run LLM extraction only (skip Playwright)
 """
 from __future__ import annotations
 
@@ -35,7 +36,7 @@ from .storage import (
     save_records,
     save_venue_record,
 )
-from .storage.mongo_store import VENUE_TYPE_TO_COLLECTION, get_collection
+from .storage.mongo_store import VENUE_TYPE_TO_COLLECTION, get_collection, get_client
 from .storage.url_metadata import update_lastfoundurl_metadata
 
 logger = logging.getLogger("companyparser.api")
@@ -114,7 +115,7 @@ class ExportCsvRequest(BaseModel):
     input_file: str = "records.json"
     output: str = "records.csv"
     category: Optional[str] = None
-    sort_by: str = "insider_score"
+    sort_by: str = "tier"
 
 
 class StaleResponse(BaseModel):
@@ -138,6 +139,42 @@ class IndependentRunResponse(BaseModel):
     venue_type: str
     status: str
     record: Optional[dict[str, Any]] = None
+
+
+class FromDbRequest(BaseModel):
+    db_name: str = Field(..., description="MongoDB database name where the raw response is stored.")
+    collection_name: str = Field(..., description="Collection name inside that database.")
+    raw_response_key: str = Field(
+        "raw_response",
+        description="Key/field name under which the raw HTML is stored in the document.",
+    )
+    venue_type: str = Field(
+        ...,
+        description=f"One of: {', '.join(_VALID_VENUES)}",
+        examples=["dining"],
+    )
+    source_url_key: str = Field(
+        "source_url",
+        description="Key/field name that holds the venue URL in each document.",
+    )
+    limit: int = Field(
+        0,
+        description="Max documents to process. 0 = all documents in the collection.",
+    )
+
+
+class FromDbUrlResult(BaseModel):
+    url: str
+    status: str
+
+
+class FromDbResponse(BaseModel):
+    db_name: str
+    collection_name: str
+    total_documents: int
+    records_saved: int
+    skipped: int
+    per_url: list[FromDbUrlResult]
 
 
 # ----------------------------- helpers -------------------------------------
@@ -446,10 +483,112 @@ def independent_run(req: IndependentRunRequest) -> IndependentRunResponse:
         logger.error("Failed to save record for %s: %s", req.url, e, exc_info=True)
         raise HTTPException(status_code=500, detail="MongoDB save failed: %s" % e) from e
 
+    # Convert any ObjectId values to strings so Pydantic can serialise the response.
+    if "_id" in rec_doc:
+        rec_doc["_id"] = str(rec_doc["_id"])
+
     logger.info("Independent run succeeded for %s — record saved", req.url)
     return IndependentRunResponse(
         url=req.url, venue_type=vt, status="ok", record=rec_doc,
     )
+
+
+@app.post(
+    "/crawl/from-db",
+    response_model=FromDbResponse,
+    tags=["crawl"],
+    summary="Extract records from pre-fetched raw HTML stored in MongoDB",
+)
+def from_db_run(req: FromDbRequest) -> FromDbResponse:
+    """Read raw Playwright HTML from an arbitrary MongoDB collection and run
+    only the LLM extraction + clean + save pipeline.  Skips the Playwright
+    fetch step entirely — useful when raw responses were saved from earlier
+    crawls or external tools.
+
+    Each document in the source collection must contain:
+    - A field with the raw HTML (key specified by ``raw_response_key``)
+    - A field with the source URL (key specified by ``source_url_key``)
+    """
+    vt = _validate_venue(req.venue_type)
+    logger.info(
+        "Received /crawl/from-db: db=%s, collection=%s, venue_type=%s",
+        req.db_name, req.collection_name, vt,
+    )
+
+    # Connect to the specified DB + collection
+    try:
+        db = get_client()[req.db_name]
+        source_coll = db[req.collection_name]
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to connect to %s.%s: %s" % (req.db_name, req.collection_name, e),
+        ) from e
+
+    # Fetch documents that have the raw_response_key
+    query = {req.raw_response_key: {"$exists": True, "$nin": [None, ""]}}
+    cursor = source_coll.find(query)
+    if req.limit > 0:
+        cursor = cursor.limit(req.limit)
+
+    docs = list(cursor)
+    if not docs:
+        raise HTTPException(
+            status_code=404,
+            detail="No documents with '%s' found in %s.%s"
+                   % (req.raw_response_key, req.db_name, req.collection_name),
+        )
+
+    per_url: list[FromDbUrlResult] = []
+    records_saved = 0
+    skipped = 0
+
+    for doc in docs:
+        html = doc.get(req.raw_response_key, "")
+        source_url = str(doc.get(req.source_url_key) or doc.get("website") or doc.get("url") or doc.get("_id"))
+
+        if not html or not html.strip():
+            per_url.append(FromDbUrlResult(url=source_url, status="skipped: empty raw_response"))
+            skipped += 1
+            continue
+
+        # LLM extraction
+        try:
+            rec = extract_record(html, url=source_url, category=vt, source_name=source_url)
+        except ExtractorError as e:
+            logger.error("LLM extraction failed for %s: %s", source_url, e)
+            per_url.append(FromDbUrlResult(url=source_url, status="error: %s" % e))
+            continue
+
+        if rec is None:
+            per_url.append(FromDbUrlResult(url=source_url, status="junked_page"))
+            skipped += 1
+            continue
+
+        # Clean + save
+        rec = clean(rec)
+        rec_doc = rec.model_dump(mode="json")
+        rec_doc["raw_response"] = html
+        try:
+            save_venue_record(vt, rec_doc)
+        except Exception as e:
+            logger.error("Failed to save record for %s: %s", source_url, e)
+            per_url.append(FromDbUrlResult(url=source_url, status="error: save failed — %s" % e))
+            continue
+
+        records_saved += 1
+        per_url.append(FromDbUrlResult(url=source_url, status="ok"))
+        logger.info("from-db extraction succeeded for %s", source_url)
+
+    return FromDbResponse(
+        db_name=req.db_name,
+        collection_name=req.collection_name,
+        total_documents=len(docs),
+        records_saved=records_saved,
+        skipped=skipped,
+        per_url=per_url,
+    )
+
 
 
 @app.post(

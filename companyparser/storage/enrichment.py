@@ -127,35 +127,23 @@ def enrich_record(
     enriched = existing_doc.copy()
     changes = {}
     
-    # Fields to potentially enrich
+    # Fields to potentially enrich (matches slim Record model)
     enrichment_fields = [
         "name",
         "name_en",
         "name_jp",
-        "name_local",
         "description",
+        "why_on_list",
+        "signature_dish_or_feature",
+        "hype_indicators",
+        "subcategory",
         "city",
         "neighborhood",
         "address",
-        "address_jp",
-        "phone",
-        "website",
         "price_tier",
-        "price_specific",
-        "reservation_method",
-        "english_friendly",
-        "foreigner_friendly",
-        "lead_time",
-        "english_review_count",
-        "japanese_review_count",
-        "tabelog_score",
-        "tabelog_award",
-        "awards",
-        "mentioned_in_jp_media",
-        "mentioned_in_en_media",
-        "tags",
-        "images",
+        "tier",
         "photos",
+        "notes",
     ]
     
     for field in enrichment_fields:
@@ -206,28 +194,17 @@ def merge_duplicate_records(
     
     enrichment_fields = [
         "description",
+        "why_on_list",
+        "signature_dish_or_feature",
+        "hype_indicators",
+        "subcategory",
         "city",
         "neighborhood",
         "address",
-        "address_jp",
-        "phone",
-        "website",
         "price_tier",
-        "price_specific",
-        "reservation_method",
-        "english_friendly",
-        "foreigner_friendly",
-        "lead_time",
-        "english_review_count",
-        "japanese_review_count",
-        "tabelog_score",
-        "tabelog_award",
-        "awards",
-        "mentioned_in_jp_media",
-        "mentioned_in_en_media",
-        "tags",
-        "images",
+        "tier",
         "photos",
+        "notes",
     ]
     
     if not keep_primary_name:

@@ -81,26 +81,16 @@ _LLM_FIELDS: tuple[str, ...] = (
     "confidence",
     "name_jp",
     "description",
+    "why_on_list",
+    "signature_dish_or_feature",
+    "hype_indicators",
     "subcategory",
     "city",
     "neighborhood",
     "address",
-    "address_jp",
-    "phone",
-    "website",
     "price_tier",
-    "price_specific",
-    "reservation_method",
-    "english_friendly",
-    "foreigner_friendly",
-    "lead_time",
-    "awards",
-    "tags",
-    # editorial tagging — LLM decides Famous vs Insider
-    "tagging",
-    "famous_score",
-    "insider_score",
-    "tagging_signals",
+    "tier",
+    "notes",
 )
 
 
@@ -109,52 +99,33 @@ class ExtractorError(RuntimeError):
 
 
 # ---------------------------------------------------------------------------
-# Category-specific subcategory options (draft — client reviews May 15)
+# The 16 locked subcategories with editorial descriptions for LLM prompting
 # ---------------------------------------------------------------------------
 
 _SUBCATEGORIES: dict[str, str] = {
     "hotel": """\
-1. Traditional
-   - Ryokan (traditional inn with tatami rooms, futon, yukata, kaiseki meals)
-   - Minshuku (family-run Japanese B&B, simpler than a ryokan)
-   - Shukubo (temple or monastery lodging, often includes meditation or vegetarian meals)
-
-2. Western-style
-   - City hotel (full-service, urban, international amenities)
-   - Business hotel (compact, affordable, focused on work travelers)
-   - Resort hotel (leisure-focused, scenic locations, pools and spas)
-
-3. Budget / Unique
-   - Capsule hotel (pod-style sleeping units, very low cost, often gender-separated floors)
-   - Manga cafe / Net cafe (cubicle overnight stays with internet access and manga)
-   - Love hotel (themed rooms, short-stay or overnight, privacy-focused)
-
-4. Luxury / Hybrid
-   - Luxury ryokan (high-end traditional inn with private onsen, premium kaiseki, butler service)
-   - International chain hotel (Marriott, Hyatt, Hilton, etc. operating in Japan)
-   - Boutique / Design hotel (curated aesthetic, architect-designed, unique identity)
-
-5. Other
-   - Hostel (dormitory beds, communal spaces, social atmosphere)
-   - Onsen hotel (hot spring baths as the central feature, can be Western or Japanese style)
-   - Minpaku (licensed home-sharing / Airbnb-style accommodation under Japan's 2018 law)
-   - Pension (European-style B&B, common in ski and mountain resort areas)""",
+1. ultra_luxury_icons — Aman / Bulgari / Four Seasons / Mandarin tier
+2. ryokan — Traditional Japanese inns (Tawaraya, Hiiragiya, Hoshinoya Kyoto)
+3. design_boutique — Architecturally led, smaller-key, design-forward (Trunk, K5, Hoshinoya Tokyo)
+4. private_exclusive — Member-only, villa-style, residences (Soho House, Janu, private compounds)""",
 
     "dining": """\
-Sushi, Ramen, Izakaya, Kaiseki, Tempura, Yakitori, Teppanyaki, Udon/Soba,
-Tonkatsu, Unagi, Okonomiyaki, Yakiniku, French, Italian, Fusion, Café,
-Bakery, Dessert/Patisserie, Teahouse, Bar dining, Street food, Bento/Takeout""",
+1. kaiseki — Seasonal multi-course art dining
+2. sushi — All sushi; tier and price_range carry the distinction
+3. omakase — All omakase; tier and price_range carry the distinction""",
 
     "cultural": """\
-Temple, Shrine, Castle, Garden, Museum, Gallery, Onsen/Sento, Tea ceremony,
-Calligraphy, Pottery/Ceramics, Kimono rental, Martial arts, Cooking class,
-Festival/Matsuri, Theater (Kabuki/Noh/Bunraku), Geisha district, Nature/Hiking,
-Sake brewery, Craft workshop""",
+1. temples_shrines — Fushimi Inari to private temple tea; tier carries the access split
+2. geisha_maiko — Tourist-facing dance shows vs real Gion ozashiki bookings
+3. sumo — Tournament tickets vs morning training stable visits
+4. traditional_crafts_workshops — Tea, kimono, katana, pottery, washi, tofu; tier carries the master-vs-tourist split
+5.   — Connection-only experiences: private temple dinners, after-hours museums, specific geiko""",
 
     "nightlife": """\
-Cocktail bar, Whisky bar, Sake bar, Wine bar, Jazz bar, Live music venue,
-Karaoke, Beer hall/Craft beer, Standing bar (Tachinomi), Club/Dance venue,
-Rooftop bar, Hotel bar, Speakeasy, Yokocho/Alley bar, Snack bar""",
+1. luxury_hotel_bars — Aman bar, Andaz rooftop, Bulgari, New York Bar at Park Hyatt
+2. cocktail_bars — Speakeasies + craft cocktail (Tender, Bar High Five, Star Bar, Benfiddich, unmarked Ginza basements)
+3. local_chaos — Golden Gai, Omoide Yokocho, late-night izakaya streets
+4. late_night_fine_dining — Post-midnight kitchens, members' dining clubs that operate as nightlife""",
 }
 
 
@@ -196,74 +167,44 @@ EXTRACT_TOOL: dict[str, Any] = {
                 "type": "string",
                 "description": "Brief 1-2 sentence description based on page content.",
             },
+            "why_on_list": {
+                "type": "string",
+                "description": "1-2 sentence editorial justification for why this venue belongs in a luxury Japan travel ebook.",
+            },
+            "signature_dish_or_feature": {
+                "type": "string",
+                "description": "The standout offering or key attraction, e.g. '20-course omakase', 'private onsen suite'.",
+            },
+            "hype_indicators": {
+                "type": "string",
+                "description": "Consolidated fame/review signals as a pipe-separated string, e.g. 'Tabelog: 4.31 | Michelin: 2★ | TripAdvisor: 1,247 reviews'.",
+            },
             "subcategory": {
                 "type": "string",
+                "enum": [
+                    "ultra_luxury_icons", "ryokan", "design_boutique", "private_exclusive",
+                    "kaiseki", "sushi", "omakase",
+                    "temples_shrines", "geisha_maiko", "sumo", "traditional_crafts_workshops", "access_you_cant_google",
+                    "luxury_hotel_bars", "cocktail_bars", "local_chaos", "late_night_fine_dining",
+                ],
                 "description": "MUST be from the provided subcategory list. Null if none fit.",
             },
             "city": {"type": "string", "description": "City name, e.g. 'Tokyo', 'Kyoto'."},
             "neighborhood": {"type": "string", "description": "District/neighborhood name."},
             "address": {"type": "string", "description": "Full address in English/romanized form."},
-            "address_jp": {"type": "string", "description": "Full address in Japanese characters."},
-            "phone": {"type": "string", "description": "Phone number as shown on page."},
-            "website": {"type": "string", "description": "Official website URL."},
             "price_tier": {
                 "type": "string",
                 "enum": ["¥", "¥¥", "¥¥¥", "¥¥¥¥"],
                 "description": "Price tier: ¥=under ¥2000, ¥¥=¥2000-5000, ¥¥¥=¥5000-15000, ¥¥¥¥=over ¥15000.",
             },
-            "price_specific": {
+            "tier": {
                 "type": "string",
-                "description": "Specific price info, e.g. '¥8,000 per person'.",
+                "enum": ["famous", "insider"],
+                "description": "'famous' = well-known to international travelers (chains, Michelin, guidebooks, high English reviews). 'insider' = known to locals/connoisseurs (Tabelog favorites, Japanese-only access, hidden gems).",
             },
-            "reservation_method": {
+            "notes": {
                 "type": "string",
-                "enum": [
-                    "walk_in", "online_en", "online_jp", "phone_only",
-                    "concierge_only", "members_only", "recommendation_only",
-                ],
-                "description": "How reservations are made.",
-            },
-            "english_friendly": {
-                "type": "string",
-                "enum": ["yes", "limited", "no"],
-                "description": "English accessibility level.",
-            },
-            "foreigner_friendly": {
-                "type": "string",
-                "enum": ["yes", "limited", "no"],
-                "description": "Tourist-friendliness level.",
-            },
-            "lead_time": {
-                "type": "string",
-                "description": "How far in advance reservations needed, e.g. '2 months'.",
-            },
-            "awards": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Awards/recognitions, e.g. ['Michelin 1 star']. Empty array if none.",
-            },
-            "tags": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Descriptive tags from page content. Empty array if none.",
-            },
-            "tagging": {
-                "type": "string",
-                "enum": ["famous", "insider", "both", "ambiguous"],
-                "description": "Editorial bucket based on score rules.",
-            },
-            "famous_score": {
-                "type": "integer",
-                "description": "0-6 indicating international/mainstream fame.",
-            },
-            "insider_score": {
-                "type": "integer",
-                "description": "0-6 indicating local/connoisseur recognition.",
-            },
-            "tagging_signals": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Evidence phrases for scores. Empty array if none.",
+                "description": "Any additional noteworthy details not captured by other fields.",
             },
         },
     },
@@ -333,123 +274,53 @@ def _get_system_prompt(category: str) -> str:
     """
     subcategory_list = _SUBCATEGORIES.get(category, _SUBCATEGORIES["hotel"])
     return (f"""
-You are extracting structured venue data from a webpage for a Japan luxury-travel ebook. Your task is to extract information about a single venue.
+You are extracting structured venue data from a webpage for a Japan luxury-travel ebook.
 You MUST use the `save_venue_record` tool to output the data.
 
-For the subcategory field, you MUST select from this predefined list. Do NOT create new subcategory values:
+For the subcategory field, you MUST select from this predefined list. Do NOT create new values:
 
 <subcategory_options>
 {subcategory_list}
 </subcategory_options>
 
-FIELD DEFINITIONS AND RULES:
+FIELD RULES:
 
-**Basic Identification:**
-- is_venue: true if the page describes a specific hotel/restaurant/bar/cafe/experience venue; false if it's a category page, 404, login page, generic article, listing page, blog post, or other non-venue page
-- confidence: a number between 0 and 1 indicating extraction confidence. Use 0 if not a venue page, 1 if very confident. This helps filter out junk pages
-- name: the venue's primary display name (use the most prominent English or romanized name shown)
-- name_en: English name if explicitly provided, else null
-- name_jp: Japanese name in kanji/kana if shown, else null
-- description: a brief 1-2 sentence description of the venue based on page content, or null if insufficient information
-- subcategory: MUST be selected from the subcategory_options list provided above. Choose the single most specific match. If none fit, use null. Do NOT create new values.
+**Control:**
+- is_venue: true if the page describes a specific venue; false for category/listing/error/blog pages
+- confidence: 0-1. Use 0 if not a venue page
+
+**Identity:**
+- name: primary display name (English or romanized)
+- name_en: English name if explicitly shown, else null
+- name_jp: Japanese name in kanji/kana 
+- description: brief 1-2 sentence description from page content, or null
+- why_on_list: 1-2 sentence editorial justification for inclusion in a luxury Japan ebook. Focus on what makes it special. Null if insufficient info.
+- signature_dish_or_feature: the standout offering (e.g. "20-course omakase", "private onsen suite"). Null if not identifiable.
+- hype_indicators: consolidated fame/review signals as pipe-separated string. Combine any Tabelog scores, Michelin stars, TripAdvisor reviews, awards found (e.g. "Tabelog: 4.31 | Michelin: 2★ | TripAdvisor: 1,247 reviews"). Null if none found.
+- subcategory: MUST be from the list above. Null if none fit.
 
 **Location:**
-- city: city name (e.g., "Tokyo", "Kyoto", "Gifu")
-- neighborhood: neighborhood/district name if mentioned (e.g., "Shibuya", "Gion")
+- city: e.g. "Tokyo", "Kyoto"
+- neighborhood: district name, e.g. "Ginza", "Gion"
 - address: full address in English/romanized form
-- address_jp: full address in Japanese characters if provided, else null
-
-**Contact & Booking:**
-- phone: phone number in any format shown on page, or null
-- website: official website URL if provided, else null
-- reservation_method: one of: walk_in | online_en | online_jp | phone_only | concierge_only | members_only | recommendation_only | null (choose based on reservation information on page)
-- lead_time: how far in advance reservations are needed (e.g., "1 week", "2 months"), or null
 
 **Pricing:**
-- price_tier: one of '¥', '¥¥', '¥¥¥', '¥¥¥¥' or null. Infer from price ranges: ¥ = under ¥2000, ¥¥ = ¥2000-5000, ¥¥¥ = ¥5000-15000, ¥¥¥¥ = over ¥15000
-- price_specific: specific price information mentioned (e.g., "¥8,000 per person", "lunch ¥1,500"), or null
+- price_tier: ¥ (under ¥2000) | ¥¥ (¥2000-5000) | ¥¥¥ (¥5000-15000) | ¥¥¥¥ (over ¥15000) | null
 
-**Accessibility:**
-- english_friendly: yes | limited | no | null (based on English menu, English-speaking staff mentions)
-- foreigner_friendly: yes | limited | no | null (based on tourist-friendliness signals, foreign customer mentions)
+**Tier (Famous vs Insider):**
+- tier: "famous" or "insider"
+  * "famous" = well-known internationally: major hotel chains, Michelin stars, featured in Condé Nast / Lonely Planet, high English-language reviews, celebrity chef, iconic landmarks
+  * "insider" = known to locals/connoisseurs: high Tabelog scores, Japanese-only booking, hidden gems, featured in Japanese media (Brutus, Dancyu), cult following, hard-to-book among locals
+  * If both signals are equally strong, prefer "famous". Use null only if no signal at all.
 
-**Quality Signals:**
-- tabelog_score: the numeric Tabelog rating if shown (e.g., 3.18), or null
-- awards: array of awards/recognitions (e.g., ["Michelin 1 star", "Tabelog Gold"]), empty array [] if none
-- tags: array of descriptive tags from page content (e.g., ["stylish", "family-friendly", "breakfast"]), empty array [] if none
-
-**Scoring (CRITICAL - Read Carefully):**
-
-Before assigning scores, use the scratchpad below to think through the evidence.
-
-- famous_score: integer 0-6 indicating how well-known the venue is to international/mainstream travelers
-  
-  **What makes a venue FAMOUS (high famous_score):**
-  * International hotel/restaurant chains (Hyatt, Marriott, Hilton, Park Hyatt, Mandarin Oriental)
-  * Michelin stars (especially 2-3 stars)
-  * Featured in international media (Condé Nast Traveler, Travel + Leisure, NYT Travel)
-  * High volume of English-language reviews (hundreds on TripAdvisor/Google)
-  * Celebrity chef or internationally recognized brand
-  * Iconic tourist destinations everyone knows (Tokyo Tower, Fushimi Inari)
-  * Appears in major English guidebooks (Lonely Planet, Fodor's)
-  
-  **What does NOT make a venue famous:**
-  * Being on a booking aggregator site (rlx.jp, Veltra, Viator)
-  * Having a website or taking online reservations
-  * Being expensive or luxury-positioned
-  * Generic tour operators or bus tours
-  * Local chains unknown outside Japan
-  
-  **Scoring guide:**
-  * 0 = no fame signals at all
-  * 1-2 = minimal fame (mentioned in one English blog, small number of foreign reviews, generic tour operator)
-  * 3-4 = moderate fame (featured in major international guides, 100+ English reviews, recognized brand in travel circles, 1 Michelin star)
-  * 5-6 = very famous (2-3 Michelin stars, international hotel brand, iconic landmark, celebrity chef, appears in every major guidebook)
-  * Use null ONLY if page provides absolutely no signal
-
-- insider_score: integer 0-6 indicating how known the venue is to Japan locals/industry professionals/connoisseurs
-  
-  **What makes a venue INSIDER (high insider_score):**
-  * Featured in Japanese gourmet/lifestyle magazines (Brutus, Pen, Dancyu, Hanako)
-  * High Tabelog score (3.5+) with many Japanese reviews
-  * Described as "hidden gem," "locals only," "known to connoisseurs"
-  * Requires Japanese language to book (phone only, Japanese website only)
-  * No English menu or English-speaking staff
-  * Featured in Japanese TV shows or by Japanese food critics
-  * Small, independent, family-run establishments with cult following
-  * Mentioned as difficult to get reservations among locals
-  * Regional specialties known to Japanese food enthusiasts
-  * Traditional crafts/experiences valued by Japanese culture enthusiasts
-  
-  **What does NOT make a venue insider:**
-  * Being on an English booking site
-  * Having English-friendly service
-  * Being a tourist attraction
-  * Generic commercial tours marketed to tourists
-  
-  **Scoring guide:**
-  * 0 = no insider signals at all
-  * 1-2 = minimal insider appeal (standard commercial venue, tourist-focused, widely accessible to foreigners)
-  * 3-4 = moderate insider appeal (local favorite, featured in Japanese media, respected by locals, high Tabelog score, some barriers to foreign access)
-  * 5-6 = strong insider appeal (hidden gem, industry secret, featured in Japanese connoisseur publications, Japanese-only access, cult following among locals)
-  * Use null ONLY if page provides absolutely no signal
-
-- tagging: Assign based on the scores using EXACTLY these rules:
-  * 'famous': famous_score ≥ 3 AND insider_score ≤ 2
-  * 'insider': insider_score ≥ 3 AND famous_score ≤ 2
-  * 'both': BOTH famous_score ≥ 3 AND insider_score ≥ 3
-  * 'ambiguous': BOTH famous_score < 3 AND insider_score < 3
-  * null: only if page provides no meaningful signal for either score (both scores are null)
-
-- tagging_signals: array of short phrases citing evidence for the scores (e.g., ["Michelin 2 star", "340 Tabelog reviews", "featured in Brutus magazine", "locals only", "no English menu", "Park Hyatt brand", "500+ TripAdvisor reviews"]), empty array [] if none
+**Other:**
+- notes: any additional noteworthy details not captured above, or null
 
 **General Rules:**
-- Use null for any field where the page does not provide clear information
-- Do NOT guess or infer information not present on the page
-- Do NOT make up data
-- For arrays (awards, tags, tagging_signals), use empty array [] if there are none, not null
-- Extract information only from the provided page text
-- For subcategory, you MUST choose from the provided list - do not invent new categories
+- Use null for any field without clear information on the page
+- Do NOT guess, infer, or fabricate data
+- You are allowed to convert names to english or japanese if found on the page
+- Extract only from the provided page text
 
 Call the save_venue_record tool with your findings."""
     )

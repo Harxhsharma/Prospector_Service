@@ -106,6 +106,7 @@ class PlaywrightSource(BaseSource):
                 self.logger.debug("Launching Chromium browser")
                 browser = p.chromium.launch(
                     headless=self.headless,
+                    slow_mo=100,
                     args=[
                         "--disable-blink-features=AutomationControlled",
                         "--disable-features=IsolateOrigins,site-per-process",

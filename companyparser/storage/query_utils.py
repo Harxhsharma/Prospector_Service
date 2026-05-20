@@ -121,14 +121,14 @@ def get_incomplete_records(
                     "null_count": {
                         "$sum": [
                             {"$cond": [{"$eq": ["$description", None]}, 1, 0]},
-                            {"$cond": [{"$eq": ["$phone", None]}, 1, 0]},
-                            {"$cond": [{"$eq": ["$website", None]}, 1, 0]},
                             {"$cond": [{"$eq": ["$address", None]}, 1, 0]},
                             {"$cond": [{"$eq": ["$price_tier", None]}, 1, 0]},
-                            {"$cond": [{"$eq": ["$tabelog_score", None]}, 1, 0]},
-                            {"$cond": [{"$eq": ["$reservation_method", None]}, 1, 0]},
-                            {"$cond": [{"$eq": ["$english_friendly", None]}, 1, 0]},
-                            {"$cond": [{"$eq": ["$foreigner_friendly", None]}, 1, 0]},
+                            {"$cond": [{"$eq": ["$why_on_list", None]}, 1, 0]},
+                            {"$cond": [{"$eq": ["$signature_dish_or_feature", None]}, 1, 0]},
+                            {"$cond": [{"$eq": ["$hype_indicators", None]}, 1, 0]},
+                            {"$cond": [{"$eq": ["$tier", None]}, 1, 0]},
+                            {"$cond": [{"$eq": ["$subcategory", None]}, 1, 0]},
+                            {"$cond": [{"$eq": ["$neighborhood", None]}, 1, 0]},
                         ]
                     }
                 }

@@ -10,38 +10,25 @@ from ..config import PROCESSED_DIR, RAW_DIR
 from ..models import RawPayload, Record
 
 
-# Columns the editor wants in the CSV review workflow. Order matters - this
-# is the order they'll see in their spreadsheet.
+# Columns the client expects in the delivery spreadsheet. Order matches their
+# schema: Identity → Content → Location → Pricing → Media → Provenance.
 CSV_COLUMNS = [
     "id",
     "category",
     "subcategory",
-    "tagging",
-    "famous_score",
-    "insider_score",
+    "tier",
     "name_en",
     "name_jp",
     "city",
     "neighborhood",
-    "address_jp",
+    "address",
+    "description",
+    "why_on_list",
     "price_tier",
-    "price_specific",
-    "reservation_method",
-    "english_friendly",
-    "foreigner_friendly",
-    "lead_time",
-    "english_review_count",
-    "japanese_review_count",
-    "tabelog_score",
-    "tabelog_award",
-    "awards",
-    "mentioned_in_jp_media",
-    "mentioned_in_en_media",
-    "tagging_signals",
-    "source_url",
-    "source_urls",
+    "signature_dish_or_feature",
+    "hype_indicators",
     "photos",
-    "last_scraped",
+    "source_url",
     "notes",
 ]
 
@@ -71,10 +58,10 @@ def load_records(filename: str = "records.json") -> list[Record]:
 
 
 def export_csv(records: Iterable[Record], filename: str = "records.csv") -> Path:
-    """Write records to a CSV that the editor can review in a spreadsheet.
+    """Write records to a CSV that the client can review in a spreadsheet.
 
-    List fields (awards, media, signals, urls, photos) are joined with " | "
-    so they survive a round-trip through Excel without being mangled.
+    List fields (photos) are joined with " | " so they survive a round-trip
+    through Excel without being mangled.
     """
     path = PROCESSED_DIR / filename
     with path.open("w", encoding="utf-8-sig", newline="") as fh:
@@ -84,18 +71,9 @@ def export_csv(records: Iterable[Record], filename: str = "records.csv") -> Path
             row = r.model_dump(mode="json")
             # Fall back to ``name`` if ``name_en`` wasn't populated.
             row.setdefault("name_en", row.get("name"))
-            row.setdefault("name_jp", row.get("name_local"))
-            for k in (
-                "awards",
-                "mentioned_in_jp_media",
-                "mentioned_in_en_media",
-                "tagging_signals",
-                "source_urls",
-                "photos",
-            ):
+            for k in ("photos",):
                 v = row.get(k)
                 if isinstance(v, list):
                     row[k] = " | ".join(str(x) for x in v)
             writer.writerow(row)
     return path
-

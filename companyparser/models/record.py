@@ -2,15 +2,9 @@
 
 Schema design notes
 -------------------
-The pipeline is tuned for the "Famous Version vs. Insider Version" Japan
-luxury-travel ebook. Every venue is scored on two independent 0-6 axes
-(``famous_score`` / ``insider_score``) and assigned one of four ``tagging``
-buckets (``famous`` / ``insider`` / ``both`` / ``ambiguous``). The scoring
-itself lives in :mod:`companyparser.tagging`.
-
-The legacy ``tier`` field (``public`` / ``insider``) is kept for backwards
-compatibility with the existing connectors and dedupe logic. New code should
-read ``tagging`` instead.
+The pipeline is tuned for the Japan luxury-travel ebook.  Each venue gets a
+``tier`` label (``famous`` / ``insider``) assigned directly by the LLM, and
+a set of client-facing fields that map 1-to-1 with the delivery spreadsheet.
 
 All new fields are optional - per the spec, the editor would rather see gaps
 than fabricated data, so unknown values stay ``None`` / empty.
@@ -27,94 +21,47 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 SourceType = Literal["playwright"]
-# Legacy two-tier classification kept for back-compat with existing connectors.
-Tier = Literal["public", "insider"]
-# Four-way editorial bucket per the ebook spec.
-Tagging = Literal["famous", "insider", "both", "ambiguous"]
+Tier = Literal["famous", "insider"]
 PriceTier = Literal["¥", "¥¥", "¥¥¥", "¥¥¥¥"]
-ReservationMethod = Literal[
-    "walk_in",
-    "online_en",
-    "online_jp",
-    "phone_only",
-    "concierge_only",
-    "members_only",
-    "recommendation_only",
-]
-Friendliness = Literal["yes", "limited", "no"]
-
-
-class GeoPoint(BaseModel):
-    lat: float
-    lng: float
 
 
 class Record(BaseModel):
-    """Generic ebook content record. Specialize via `category` + `extra`."""
+    """Slim ebook venue record — fields map to the client delivery spreadsheet."""
 
     id: str = Field(..., description="Stable hash-based id")
     category: str
     subcategory: Optional[str] = None
-    # Legacy 2-tier label. New code should rely on ``tagging`` instead.
-    tier: Tier = "public"
+    tier: Optional[Tier] = None
 
     # --- names ------------------------------------------------------------
-    # ``name`` stays as a back-compat alias for ``name_en`` (most existing
-    # connectors only fill ``name``). ``name_jp`` preserves kanji+kana per
-    # spec - never romanize at the data layer.
     name: str
     name_en: Optional[str] = None
     name_jp: Optional[str] = None
-    name_local: Optional[str] = None  # legacy alias for name_jp
+
+    # --- content ----------------------------------------------------------
     description: Optional[str] = None
+    why_on_list: Optional[str] = None  # editorial justification for inclusion
+    signature_dish_or_feature: Optional[str] = None  # key attraction / standout offering
+    hype_indicators: Optional[str] = None  # consolidated fame signals string
 
     # --- location ---------------------------------------------------------
     city: Optional[str] = None  # "Tokyo" | "Kyoto" (this ebook's scope)
     neighborhood: Optional[str] = None  # e.g. "Ginza", "Higashiyama"
     address: Optional[str] = None
-    address_jp: Optional[str] = None
-    location: Optional[GeoPoint] = None
-    phone: Optional[str] = None
-    website: Optional[HttpUrl] = None
 
-    # --- pricing & access -------------------------------------------------
+    # --- pricing ----------------------------------------------------------
     price_tier: Optional[PriceTier] = None
-    price_specific: Optional[str] = None  # e.g. "¥30,000-¥50,000 / person"
-    reservation_method: Optional[ReservationMethod] = None
-    english_friendly: Optional[Friendliness] = None
-    foreigner_friendly: Optional[Friendliness] = None  # distinct from english
-    lead_time: Optional[str] = None  # free-form, e.g. "2-4 weeks"
 
-    # --- review / awards signals -----------------------------------------
-    english_review_count: Optional[int] = None  # Google + Yelp + TripAdvisor
-    japanese_review_count: Optional[int] = None  # Tabelog + Ikyu + ...
-    tabelog_score: Optional[float] = None
-    tabelog_award: Optional[Literal["gold", "silver", "bronze"]] = None
-    awards: list[str] = Field(default_factory=list)  # e.g. "Michelin 2*"
-    mentioned_in_jp_media: list[str] = Field(default_factory=list)
-    mentioned_in_en_media: list[str] = Field(default_factory=list)
-
-    tags: list[str] = Field(default_factory=list)
-    images: list[HttpUrl] = Field(default_factory=list)
+    # --- media ------------------------------------------------------------
     photos: list[HttpUrl] = Field(default_factory=list)  # editor reference only
-
-    # --- editorial tagging (Layer 2) -------------------------------------
-    tagging: Optional[Tagging] = None
-    famous_score: Optional[int] = Field(default=None, ge=0, le=6)
-    insider_score: Optional[int] = Field(default=None, ge=0, le=6)
-    tagging_signals: list[str] = Field(default_factory=list)
 
     # --- provenance -------------------------------------------------------
     source_url: HttpUrl
-    source_urls: list[HttpUrl] = Field(default_factory=list)
     source_name: str
     source_type: SourceType
     fetched_at: datetime = Field(default_factory=_utcnow)
     last_scraped: datetime = Field(default_factory=_utcnow)
     notes: Optional[str] = None
-
-    # category-specific fields go here untyped
-    extra: dict[str, Any] = Field(default_factory=dict)
 
 
 class RawPayload(BaseModel):

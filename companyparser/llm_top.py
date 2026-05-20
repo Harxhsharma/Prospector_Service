@@ -31,18 +31,14 @@ def _summary(doc: dict[str, Any]) -> dict[str, Any]:
         "name_en",
         "name_jp",
         "description",
+        "why_on_list",
+        "signature_dish_or_feature",
+        "hype_indicators",
         "subcategory",
         "city",
         "neighborhood",
-        "address",
         "price_tier",
-        "tabelog_score",
-        "awards",
-        "tags",
-        "tagging",
-        "famous_score",
-        "insider_score",
-        "tagging_signals",
+        "tier",
         "source_url",
     )
     out = {k: doc.get(k) for k in keys if doc.get(k) is not None}
@@ -75,12 +71,11 @@ def _parse_top(text: str) -> list[dict[str, Any]]:
 
 
 def _heuristic_pick(records: list[dict[str, Any]], top_n: int) -> list[dict[str, Any]]:
-    """Fallback when no HF_TOKEN: rank by insider_score → famous_score → tabelog_score."""
+    """Fallback when no HF_TOKEN: rank by tier (insider first) → hype_indicators presence → description length."""
     def _key(d: dict[str, Any]):
         return (
-            d.get("insider_score") or 0,
-            d.get("famous_score") or 0,
-            d.get("tabelog_score") or 0,
+            1 if d.get("tier") == "insider" else 0,
+            1 if d.get("hype_indicators") else 0,
             len(d.get("description") or ""),
         )
 
